@@ -38,7 +38,7 @@ The `RecordingService` is the canonical and sole path for audio captures. It lev
 - **Filenames**: Generated deterministically using `YYYYMMDD_HHMMSS_UTC_<UUID>.wav` to prevent any possibility of intra-second collisions.
 
 ## 8. Time Synchronization
-The application requires accurate time for recording timestamps but operates on isolated intranets. It avoids all custom Python NTP implementations. The configuration validates local NTP IP/Hostnames and writes them into `/etc/systemd/timesyncd.conf`, relying directly on OS-level daemon capabilities (`systemd-timesyncd`). Public internet pools (`pool.ntp.org`) are explicitly blocked. All WAV generation utilizes timezone-aware `UTC` timestamps mapping strictly to the synchronized OS clock.
+The application requires accurate time for recording timestamps but operates on isolated intranets without internet connectivity. It avoids all custom Python NTP implementations. The YAML configuration dictates the local NTP IP/Hostname, which the application explicitly applies to the OS via `/etc/systemd/timesyncd.conf`, restarting the `systemd-timesyncd` daemon to execute the heavy lifting. Public internet pools (`pool.ntp.org`) are explicitly blocked and there are no internet fallbacks. All WAV generation utilizes timezone-aware `UTC` timestamps mapping strictly to the synchronized OS clock.
 
 ## 9. Deferred Assumptions (Milestone 2)
 - **Production Device Mapping:** Exact ReSpeaker hardware identifiers, mapping configurations, and required channel widths are not explicitly hard-coded; they remain managed via config mapping until production integration testing provides authoritative settings.

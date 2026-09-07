@@ -1,7 +1,9 @@
+import os
 import abc
 import subprocess
 import datetime
 from dataclasses import dataclass
+from typing import Optional
 from app.config.config import AppConfig
 
 @dataclass
@@ -17,51 +19,54 @@ class AbstractTimeSyncManager(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def apply_configuration(self):
+    def apply_configuration(self) -> bool:
         """Applies the YAML NTP configuration to the OS"""
         pass
 
 class SystemdTimeSyncManager(AbstractTimeSyncManager):
-    def __init__(self, config: AppConfig, logger=None):
+    def __init__(self, config: AppConfig, logger=None, timesyncd_conf_path: str = "/etc/systemd/timesyncd.conf"):
         self.config = config
         self.logger = logger
-        self.timesyncd_conf_path = "/etc/systemd/timesyncd.conf"
+        self.timesyncd_conf_path = timesyncd_conf_path
 
-    def apply_configuration(self):
+    def apply_configuration(self) -> bool:
         if not self.config.time.ntp.enabled:
             if self.logger:
                 self.logger.info("NTP is disabled in configuration. Bypassing timesyncd configuration.")
-            return
+            return True
 
         server = self.config.time.ntp.server
 
         try:
-            # In a real Debian Trixie environment, we modify systemd-timesyncd.conf
-            # and restart the service to apply the new local intranet NTP server.
-            # We strictly replace the NTP= line under [Time].
             if not os.path.exists(self.timesyncd_conf_path):
-                if self.logger:
-                    self.logger.warning(f"Could not find {self.timesyncd_conf_path}. System may not use systemd-timesyncd.")
-                return
-
-            with open(self.timesyncd_conf_path, 'r') as f:
-                lines = f.readlines()
+                # Create the file safely if it's completely missing
+                lines = []
+            else:
+                with open(self.timesyncd_conf_path, 'r') as f:
+                    lines = f.readlines()
 
             new_lines = []
             in_time_section = False
             ntp_set = False
+            found_time_section = False
 
             for line in lines:
-                if line.strip().startswith("[Time]"):
+                stripped = line.strip()
+                if stripped == "[Time]":
                     in_time_section = True
+                    found_time_section = True
                     new_lines.append(line)
-                elif in_time_section and line.strip().startswith("NTP="):
+                elif in_time_section and stripped.startswith("NTP="):
+                    # Replace existing active NTP
                     new_lines.append(f"NTP={server}\n")
                     ntp_set = True
-                elif in_time_section and line.strip().startswith("["):
-                    # End of Time section
+                elif in_time_section and stripped.startswith("#NTP="):
+                    # Keep commented lines intact, we will insert real one
+                    new_lines.append(line)
+                elif in_time_section and stripped.startswith("["):
+                    # We reached the next section
                     if not ntp_set:
-                        # Insert before next section if it wasn't found
+                        # Insert right before the next section
                         new_lines.insert(-1, f"NTP={server}\n")
                         ntp_set = True
                     in_time_section = False
@@ -71,24 +76,35 @@ class SystemdTimeSyncManager(AbstractTimeSyncManager):
 
             if in_time_section and not ntp_set:
                 new_lines.append(f"NTP={server}\n")
+                ntp_set = True
 
-            # Note: Writing requires root. In production, rtls-audio may need privileges
-            # or a helper script with sudoers access to apply this.
+            if not found_time_section:
+                # Add [Time] section and NTP block at EOF if missing entirely
+                new_lines.append("\n[Time]\n")
+                new_lines.append(f"NTP={server}\n")
+
             with open(self.timesyncd_conf_path, 'w') as f:
                 f.writelines(new_lines)
 
-            # Restart service
             subprocess.run(["systemctl", "restart", "systemd-timesyncd"], check=True, capture_output=True)
 
             if self.logger:
                 self.logger.info(f"Applied NTP server {server} to timesyncd.")
 
+            return True
+
         except PermissionError:
             if self.logger:
-                self.logger.warning(f"Permission denied modifying {self.timesyncd_conf_path}. Cannot apply NTP config.")
+                self.logger.error(f"Permission denied modifying {self.timesyncd_conf_path}. Cannot apply NTP config.")
+            return False
+        except subprocess.CalledProcessError as e:
+            if self.logger:
+                self.logger.error(f"Failed to restart systemd-timesyncd: {e}")
+            return False
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Failed to apply NTP configuration: {e}")
+            return False
 
     def get_status(self) -> TimeSyncStatus:
         current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
