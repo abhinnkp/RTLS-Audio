@@ -3,18 +3,19 @@ import sys
 import os
 
 from app.hardware.platform import PlatformDetector, MockPlatformDetector
+from app.hardware.time_sync import SystemdTimeSyncManager, MockTimeSyncManager
 from app.capture.audio_device import ALSAAudioDevice, MockAudioDevice
 from app.recorder.recording_service import RecordingService
 from app.config.config import ConfigLoader
 from app.utils.logger import setup_logger
 
-def get_detectors(use_mock: bool):
+def get_detectors(use_mock: bool, config):
     if use_mock:
-        return MockPlatformDetector(), MockAudioDevice()
-    return PlatformDetector(), ALSAAudioDevice()
+        return MockPlatformDetector(), MockAudioDevice(), MockTimeSyncManager(config)
+    return PlatformDetector(), ALSAAudioDevice(), SystemdTimeSyncManager(config)
 
-def cmd_status(args):
-    platform_detector, audio_device = get_detectors(args.mock)
+def cmd_status(args, config):
+    platform_detector, audio_device, time_sync = get_detectors(args.mock, config)
 
     info = platform_detector.detect()
 
@@ -28,6 +29,14 @@ def cmd_status(args):
     print(f"Kernel: {info.kernel_version}")
     print(f"CPU cores: {info.cpu_cores}")
     print(f"CPU model: {info.cpu_model}")
+    time_status = time_sync.get_status()
+    print("\nTime:")
+    print("-" * 25)
+    print(f"Current system time: {time_status.current_time}")
+    print(f"Time synchronization: {'synchronized' if time_status.is_synchronized else 'not synchronized'}")
+    print(f"NTP enabled: {'yes' if time_status.ntp_enabled else 'no'}")
+    print(f"NTP server: {time_status.configured_server}")
+
     print("\nAudio Devices:")
     print("-" * 25)
 
@@ -41,8 +50,8 @@ def cmd_status(args):
                 print(f"  Channels: {d.capabilities.channels}")
                 print(f"  Sample Rates: {d.capabilities.sample_rates}")
 
-def cmd_audio_devices(args):
-    _, audio_device = get_detectors(args.mock)
+def cmd_audio_devices(args, config):
+    _, audio_device, _ = get_detectors(args.mock, config)
     devices = audio_device.list_devices()
     print("\nAvailable ALSA Capture Devices:")
     print("-" * 35)
@@ -56,7 +65,7 @@ def cmd_audio_devices(args):
                 print(f"  Sample Rates: {d.capabilities.sample_rates}")
 
 def cmd_audio_test(args, config, logger):
-    _, audio_device = get_detectors(args.mock)
+    _, audio_device, _ = get_detectors(args.mock, config)
     recorder = RecordingService(audio_device, logger)
 
     # Use config as defaults if not explicitly provided
@@ -119,9 +128,9 @@ def main():
     logger = setup_logger(config.paths.log_dir, console_only=True)
 
     if args.command == "status":
-        cmd_status(args)
+        cmd_status(args, config)
     elif args.command == "audio-devices":
-        cmd_audio_devices(args)
+        cmd_audio_devices(args, config)
     elif args.command == "audio-test":
         cmd_audio_test(args, config, logger)
 

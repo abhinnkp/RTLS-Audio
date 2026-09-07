@@ -66,5 +66,24 @@ class TestConfig(unittest.TestCase):
         finally:
             os.remove(temp_path)
 
+    def test_invalid_ntp_server(self):
+        import tempfile
+        import yaml
+
+        test_config = {
+            "time": {"ntp": {"server": "pool.ntp.org"}}
+        }
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            yaml.dump(test_config, f)
+            temp_path = f.name
+
+        try:
+            with self.assertRaises(ValueError) as context:
+                ConfigLoader.load(temp_path)
+            self.assertIn("Public internet NTP servers are not permitted", str(context.exception))
+        finally:
+            os.remove(temp_path)
+
 if __name__ == '__main__':
     unittest.main()

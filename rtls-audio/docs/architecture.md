@@ -33,7 +33,10 @@ Rather than using global configuration for "is_pi_3", capabilities will later be
 ## 7. Recording Architecture & WAV Generation
 The `RecordingService` leverages the `AbstractAudioStream` (`capture/audio_device.py`), consuming audio in safely chunked blocks. This design fundamentally prevents large memory allocations, ensuring stable execution on memory-constrained SBC hardware (e.g. Pi 3B+) across extended recordings. It cleanly tracks failed devices, disrupted streams, and handles zero-byte wave file cleanup.
 
-## 8. Deferred Assumptions (Milestone 2)
+## 8. Time Synchronization
+The application requires accurate time for recording timestamps but operates on isolated intranets. It avoids all custom Python NTP implementations and strictly relies on OS-level daemons (e.g., `systemd-timesyncd`). The `SystemdTimeSyncManager` merely parses `timedatectl` output to confirm state. Hard-coded public pools (`pool.ntp.org`) are proactively blocked in configuration validation. All WAV generation logic utilizes timezone-aware `UTC` timestamps mapping strictly to the synchronized OS clock.
+
+## 9. Deferred Assumptions (Milestone 2)
 - **Production Device Mapping:** Exact ReSpeaker hardware identifiers, mapping configurations, and required channel widths are not explicitly hard-coded; they remain managed via config mapping until production integration testing provides authoritative settings.
 - **Audio Profile:** We defer selecting the final sample rate, VAD sensitivity, and spatial processing configuration to future milestones.
 - **System Services:** systemd unit creation and hardening are left skeletonized until core processing pipelines are defined.

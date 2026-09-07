@@ -2,6 +2,8 @@
 
 RTLS+ Audio is a production-oriented AUDIO-ONLY recording application designed for Raspberry Pi devices, primarily targeting the Raspberry Pi 3B+, Raspberry Pi 4, and Raspberry Pi 5. (Note: No camera integration exists or will be implemented).
 
+**Note on Network Environment**: This device is designed for isolated Intranet installations. It does **not** rely on public internet NTP servers (e.g. `pool.ntp.org`) or internet connectivity. Target systems use local intranet NTP servers configured in the OS (`systemd-timesyncd`).
+
 ## Project Structure
 - `app/`: Core application source code (hardware detection, ALSA audio, recording service)
 - `tests/`: Unit tests utilizing mocked interfaces for cross-platform validation

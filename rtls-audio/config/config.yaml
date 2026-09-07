@@ -1,8 +1,16 @@
 paths:
   data_dir: "./data"
   log_dir: "./logs"
+  config_dir: "./config"
 
 audio:
   device: "default"
   sample_rate: 48000
   channels: 2
+  sample_width: 2
+  recording_duration: 3
+
+time:
+  ntp:
+    enabled: true
+    server: "10.5.1.103"

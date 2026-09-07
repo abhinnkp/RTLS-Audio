@@ -14,6 +14,8 @@ class TestCLI(unittest.TestCase):
         output = mock_stdout.getvalue()
         self.assertIn("Raspberry Pi", output)
         self.assertIn("Mock Generic Capture Device 0", output)
+        self.assertIn("Time synchronization:", output)
+        self.assertIn("NTP server: 10.0.0.1", output)
 
     @patch('sys.stdout', new_callable=StringIO)
     def test_audio_devices_mock(self, mock_stdout):

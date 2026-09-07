@@ -2,8 +2,8 @@ import os
 import time
 import wave
 import logging
+import datetime
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Optional
 
 from app.capture.audio_device import AbstractAudioDevice, AbstractAudioStream
@@ -26,7 +26,7 @@ class RecordingService:
         self.logger = logger
 
     def _generate_filename(self) -> str:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S_UTC")
         return f"{timestamp}.wav"
 
     def record(self, output_dir: str, duration_sec: int, sample_rate: int = 48000,
