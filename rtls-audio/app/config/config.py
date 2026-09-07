@@ -45,6 +45,24 @@ class ConfigLoader:
                 channels=audio_data.get('channels', 2)
             )
 
-            return AppConfig(paths=paths_config, audio=audio_config)
+            config = AppConfig(paths=paths_config, audio=audio_config)
+            ConfigLoader.validate(config)
+            return config
 
         return AppConfig()
+
+    @staticmethod
+    def validate(config: AppConfig):
+        if not isinstance(config.paths.data_dir, str):
+            raise ValueError(f"Invalid paths.data_dir: must be a string, got {type(config.paths.data_dir)}")
+        if not isinstance(config.paths.log_dir, str):
+            raise ValueError(f"Invalid paths.log_dir: must be a string, got {type(config.paths.log_dir)}")
+
+        if not isinstance(config.audio.device, str):
+            raise ValueError(f"Invalid audio.device: must be a string, got {type(config.audio.device)}")
+
+        if not isinstance(config.audio.sample_rate, int) or config.audio.sample_rate <= 0:
+            raise ValueError(f"Invalid audio.sample_rate: must be a positive integer, got {config.audio.sample_rate}")
+
+        if not isinstance(config.audio.channels, int) or config.audio.channels <= 0:
+            raise ValueError(f"Invalid audio.channels: must be a positive integer, got {config.audio.channels}")

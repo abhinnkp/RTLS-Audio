@@ -9,7 +9,7 @@ class TestAudio(unittest.TestCase):
         devices = device.list_devices()
 
         self.assertEqual(len(devices), 2)
-        self.assertEqual(devices[0].name, "Mock ReSpeaker 2-Mic")
+        self.assertEqual(devices[0].name, "Mock Generic Capture Device 0")
         self.assertIn(16000, devices[0].capabilities.sample_rates)
 
     def test_mock_audio_capture(self):
@@ -29,6 +29,14 @@ class TestAudio(unittest.TestCase):
         finally:
             if os.path.exists(filepath):
                 os.remove(filepath)
+
+    def test_mock_audio_capture_invalid(self):
+        device = MockAudioDevice()
+        filepath = "test_capture_invalid.wav"
+
+        # duration = 0 should return False
+        success = device.capture_test_audio(duration_sec=0, filepath=filepath)
+        self.assertFalse(success)
 
 if __name__ == '__main__':
     unittest.main()

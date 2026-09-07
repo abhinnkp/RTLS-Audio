@@ -1,6 +1,6 @@
 # RTLS+ Audio
 
-RTLS+ Audio is a production-oriented audio recording application designed for Raspberry Pi devices, primarily targeting the Raspberry Pi Zero 2 W with a ReSpeaker 2-Mics Pi HAT.
+RTLS+ Audio is a production-oriented audio recording application designed for Raspberry Pi devices, primarily targeting the Raspberry Pi 3B+, Raspberry Pi 4, and Raspberry Pi 5.
 
 ## Project Structure
 - `app/`: Core application source code

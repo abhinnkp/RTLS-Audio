@@ -28,5 +28,43 @@ class TestConfig(unittest.TestCase):
         finally:
             os.remove(temp_path)
 
+    def test_invalid_config_type(self):
+        import tempfile
+        import yaml
+
+        test_config = {
+            "audio": {"sample_rate": "not_an_int"}
+        }
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            yaml.dump(test_config, f)
+            temp_path = f.name
+
+        try:
+            with self.assertRaises(ValueError) as context:
+                ConfigLoader.load(temp_path)
+            self.assertIn("Invalid audio.sample_rate: must be a positive integer", str(context.exception))
+        finally:
+            os.remove(temp_path)
+
+    def test_invalid_config_value(self):
+        import tempfile
+        import yaml
+
+        test_config = {
+            "audio": {"channels": -1}
+        }
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            yaml.dump(test_config, f)
+            temp_path = f.name
+
+        try:
+            with self.assertRaises(ValueError) as context:
+                ConfigLoader.load(temp_path)
+            self.assertIn("Invalid audio.channels: must be a positive integer", str(context.exception))
+        finally:
+            os.remove(temp_path)
+
 if __name__ == '__main__':
     unittest.main()

@@ -11,10 +11,12 @@ The application is structured into loosely coupled modules:
 - **Configuration & Utilities**: YAML-based config parsing (`config/`) and structured logging (`utils/`).
 
 ## 2. Hardware Abstraction Boundary
-The core logic must never directly read from `/proc` or run commands like `uname` manually. Instead, it queries `app.hardware.platform.PlatformDetector.detect()`, which returns a standardized `PlatformInfo` object. This makes it trivial to mock hardware for testing and enables unified support for Pi Zero 2 W, Pi 3B+, Pi 4, and Pi 5.
+The core logic must never directly read from `/proc` or run commands like `uname` manually. Instead, it queries `app.hardware.platform.PlatformDetector.detect()`, which returns a standardized `PlatformInfo` object. This makes it trivial to mock hardware for testing and enables unified support for Pi 3B+, Pi 4, and Pi 5.
 
 ## 3. Audio Abstraction Boundary
 ALSA APIs are isolated behind `AbstractAudioDevice`. `app.capture.audio_device.ALSAAudioDevice` handles true device discovery via `pyalsaaudio`. A `MockAudioDevice` provides functional equivalence for non-hardware environments like CI pipelines.
+
+**Note on Capabilities:** Reliable reporting of supported channels and sample rates purely by probing PCMs without opening the devices is complicated in standard ALSA wrappers. Our capability discovery intentionally leaves detailed capability maps as `None` when running on physical hardware unless it can be seamlessly resolved; we avoid fragile CLI parsing.
 
 ## 4. Configuration Boundary
 Configuration is defined strictly through `app.config.config.ConfigLoader`, generating a typed `AppConfig` object. Paths are inherently dynamic so developers can run tests without `root` using local folders (e.g., `./logs/` rather than `/var/log/rtls-audio/`).

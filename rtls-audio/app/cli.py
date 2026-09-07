@@ -40,15 +40,23 @@ def cmd_status(args):
                 print(f"  Channels: {d.capabilities.channels}")
                 print(f"  Sample Rates: {d.capabilities.sample_rates}")
 
-def cmd_audio_test(args):
+def cmd_audio_test(args, config):
     _, audio_device = get_detectors(args.mock)
 
+    # Use config as defaults if not explicitly provided
+    sample_rate = args.rate if args.rate is not None else config.audio.sample_rate
+    channels = args.channels if args.channels is not None else config.audio.channels
+    device = args.device if args.device is not None else config.audio.device
+
     print(f"Recording a {args.duration}-second test audio to {args.output}...")
+    print(f"Using device: '{device}', Sample rate: {sample_rate}Hz, Channels: {channels}")
+
     success = audio_device.capture_test_audio(
         duration_sec=args.duration,
         filepath=args.output,
-        sample_rate=args.rate,
-        channels=args.channels
+        sample_rate=sample_rate,
+        channels=channels,
+        device=device
     )
 
     if success:
@@ -71,8 +79,9 @@ def main():
     audio_parser = subparsers.add_parser("audio-test", help="Capture a short test audio file")
     audio_parser.add_argument("--duration", type=int, default=3, help="Duration in seconds")
     audio_parser.add_argument("--output", type=str, default="test_output.wav", help="Output file path")
-    audio_parser.add_argument("--rate", type=int, default=48000, help="Sample rate")
-    audio_parser.add_argument("--channels", type=int, default=2, help="Number of channels")
+    audio_parser.add_argument("--rate", type=int, default=None, help="Sample rate (defaults to config)")
+    audio_parser.add_argument("--channels", type=int, default=None, help="Number of channels (defaults to config)")
+    audio_parser.add_argument("--device", type=str, default=None, help="ALSA device name (defaults to config)")
 
     args = parser.parse_args()
 
@@ -83,7 +92,7 @@ def main():
     if args.command == "status":
         cmd_status(args)
     elif args.command == "audio-test":
-        cmd_audio_test(args)
+        cmd_audio_test(args, config)
 
 if __name__ == "__main__":
     main()

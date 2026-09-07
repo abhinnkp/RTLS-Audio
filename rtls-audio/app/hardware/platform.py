@@ -94,7 +94,7 @@ class PlatformDetector:
         return pi_model, pi_revision
 
 class MockPlatformDetector(PlatformDetector):
-    def __init__(self, pi_model="Raspberry Pi Zero 2 W Rev 1.0", cpu_arch="aarch64", cores=4):
+    def __init__(self, pi_model="Raspberry Pi 4 Model B Rev 1.5", cpu_arch="aarch64", cores=4):
         self._pi_model = pi_model
         self._cpu_arch = cpu_arch
         self._cores = cores

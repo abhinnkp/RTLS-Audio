@@ -20,7 +20,7 @@ class AbstractAudioDevice(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2) -> bool:
+    def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2, device: str = "default") -> bool:
         pass
 
 
@@ -48,7 +48,7 @@ class ALSAAudioDevice(AbstractAudioDevice):
             pass
         return devices
 
-    def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2) -> bool:
+    def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2, device: str = "default") -> bool:
         if not self.alsaaudio:
             return False
 
@@ -59,7 +59,8 @@ class ALSAAudioDevice(AbstractAudioDevice):
                 channels=channels,
                 rate=sample_rate,
                 format=self.alsaaudio.PCM_FORMAT_S16_LE,
-                periodsize=160
+                periodsize=160,
+                device=device
             )
 
             with wave.open(filepath, 'wb') as w:
@@ -68,10 +69,21 @@ class ALSAAudioDevice(AbstractAudioDevice):
                 w.setframerate(sample_rate)
 
                 frames_to_read = int(sample_rate * duration_sec / 160)
+                frames_read = 0
                 for _ in range(frames_to_read):
                     length, data = inp.read()
                     if length > 0:
                         w.writeframes(data)
+                        frames_read += length
+                    else:
+                        # Capture failed or zero frames read
+                        import logging
+                        logging.getLogger("rtls-audio").error("ALSA capture returned zero frames.")
+                        return False
+
+                if frames_read == 0:
+                    return False
+
             return True
         except Exception as e:
             import logging
@@ -82,12 +94,15 @@ class ALSAAudioDevice(AbstractAudioDevice):
 class MockAudioDevice(AbstractAudioDevice):
     def list_devices(self) -> List[AudioDeviceInfo]:
         return [
-            AudioDeviceInfo("Mock ReSpeaker 2-Mic", 0, AudioCapabilities([1, 2], [16000, 48000])),
-            AudioDeviceInfo("Mock Default Audio", 1, AudioCapabilities([1, 2], [48000]))
+            AudioDeviceInfo("Mock Generic Capture Device 0", 0, AudioCapabilities([1, 2], [16000, 48000])),
+            AudioDeviceInfo("Mock Generic Capture Device 1", 1, AudioCapabilities([1, 2], [48000]))
         ]
 
-    def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2) -> bool:
+    def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2, device: str = "default") -> bool:
         try:
+            if duration_sec <= 0 or channels <= 0 or sample_rate <= 0:
+                return False
+
             with wave.open(filepath, 'wb') as w:
                 w.setnchannels(channels)
                 w.setsampwidth(2)
