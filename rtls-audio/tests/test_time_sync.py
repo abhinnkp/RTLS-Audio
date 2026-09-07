@@ -66,7 +66,7 @@ class TestTimeSync(unittest.TestCase):
         config = AppConfig(time=TimeConfig(ntp=NTPConfig(enabled=True, server="10.5.2.2")))
 
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-            f.write("[Time]\nNTP=old.server.local\nFallbackNTP=0.debian.pool.ntp.org\n")
+            f.write("[Time]\nNTP=old.server.local\nFallbackNTP=local.intranet.pool\n")
             temp_path = f.name
 
         try:
@@ -79,9 +79,96 @@ class TestTimeSync(unittest.TestCase):
             self.assertIn("[Time]", content)
             self.assertIn("NTP=10.5.2.2", content)
             self.assertNotIn("old.server.local", content)
-            self.assertIn("FallbackNTP=0.debian.pool.ntp.org", content) # Preserves other lines
+            self.assertIn("FallbackNTP=local.intranet.pool", content) # Preserves safe fallback
 
         finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    @patch('app.hardware.time_sync.subprocess.run')
+    def test_systemd_apply_removes_duplicate_ntp(self, mock_subprocess):
+        mock_subprocess.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+        config = AppConfig(time=TimeConfig(ntp=NTPConfig(enabled=True, server="10.5.2.2")))
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            f.write("[Time]\nNTP=old1\nNTP=old2\n#NTP=commented\n")
+            temp_path = f.name
+
+        try:
+            manager = SystemdTimeSyncManager(config, timesyncd_conf_path=temp_path)
+            success = manager.apply_configuration()
+            self.assertTrue(success)
+
+            with open(temp_path, 'r') as f:
+                content = f.read()
+            # Only one active NTP entry
+            self.assertEqual(content.count("NTP=10.5.2.2"), 1)
+            self.assertNotIn("old1", content)
+            self.assertNotIn("old2", content)
+            self.assertIn("#NTP=commented", content)
+
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    @patch('app.hardware.time_sync.subprocess.run')
+    def test_systemd_apply_strips_public_fallback(self, mock_subprocess):
+        mock_subprocess.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+        config = AppConfig(time=TimeConfig(ntp=NTPConfig(enabled=True, server="10.5.2.2")))
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            f.write("[Time]\nNTP=old1\nFallbackNTP=0.debian.pool.ntp.org\n")
+            temp_path = f.name
+
+        try:
+            manager = SystemdTimeSyncManager(config, timesyncd_conf_path=temp_path)
+            success = manager.apply_configuration()
+            self.assertTrue(success)
+
+            with open(temp_path, 'r') as f:
+                content = f.read()
+            self.assertNotIn("pool.ntp.org", content) # Public pool completely removed
+            self.assertIn("NTP=10.5.2.2", content)
+
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    @patch('app.hardware.time_sync.subprocess.run')
+    def test_systemd_apply_handles_subprocess_error(self, mock_subprocess):
+        # Simulate systemctl restart failing
+        mock_subprocess.side_effect = subprocess.CalledProcessError(1, ["systemctl"])
+        config = AppConfig(time=TimeConfig(ntp=NTPConfig(enabled=True, server="10.5.2.2")))
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            f.write("[Time]\nNTP=old1\n")
+            temp_path = f.name
+
+        try:
+            manager = SystemdTimeSyncManager(config, timesyncd_conf_path=temp_path)
+            success = manager.apply_configuration()
+            self.assertFalse(success) # Because subprocess failed
+
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def test_systemd_apply_handles_permission_error(self):
+        config = AppConfig(time=TimeConfig(ntp=NTPConfig(enabled=True, server="10.5.2.2")))
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            temp_path = f.name
+
+        # Revoke permissions to force a PermissionError during file open
+        os.chmod(temp_path, 0o400)
+
+        try:
+            manager = SystemdTimeSyncManager(config, timesyncd_conf_path=temp_path)
+            success = manager.apply_configuration()
+            self.assertFalse(success)
+
+        finally:
+            os.chmod(temp_path, 0o600)
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 

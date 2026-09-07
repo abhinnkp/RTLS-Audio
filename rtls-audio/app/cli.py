@@ -133,7 +133,11 @@ def main():
     if args.command == "apply-config":
         _, _, time_sync = get_detectors(args.mock, config)
         time_sync.logger = logger # Enable logging for apply phase
-        time_sync.apply_configuration()
+        success = time_sync.apply_configuration()
+        if not success:
+            print("Failed to apply configuration. Root privileges may be required.")
+            sys.exit(1)
+        print("Configuration applied successfully.")
     elif args.command == "status":
         cmd_status(args, config)
     elif args.command == "audio-devices":

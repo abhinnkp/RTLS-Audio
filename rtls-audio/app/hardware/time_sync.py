@@ -50,6 +50,8 @@ class SystemdTimeSyncManager(AbstractTimeSyncManager):
             ntp_set = False
             found_time_section = False
 
+            forbidden_pools = ["pool.ntp.org", "time.google.com", "time.windows.com", "time.apple.com"]
+
             for line in lines:
                 stripped = line.strip()
                 if stripped == "[Time]":
@@ -57,9 +59,16 @@ class SystemdTimeSyncManager(AbstractTimeSyncManager):
                     found_time_section = True
                     new_lines.append(line)
                 elif in_time_section and stripped.startswith("NTP="):
-                    # Replace existing active NTP
-                    new_lines.append(f"NTP={server}\n")
-                    ntp_set = True
+                    if not ntp_set:
+                        # Replace the first existing active NTP
+                        new_lines.append(f"NTP={server}\n")
+                        ntp_set = True
+                    # If ntp_set is already True, we drop this line (removing duplicates)
+                elif in_time_section and stripped.startswith("FallbackNTP="):
+                    # Check if it contains public pools. If it does, discard it to prevent leak.
+                    has_public_pool = any(pool in stripped.lower() for pool in forbidden_pools)
+                    if not has_public_pool:
+                        new_lines.append(line)
                 elif in_time_section and stripped.startswith("#NTP="):
                     # Keep commented lines intact, we will insert real one
                     new_lines.append(line)
