@@ -1,9 +1,9 @@
 # RTLS+ Audio
 
-RTLS+ Audio is a production-oriented audio recording application designed for Raspberry Pi devices, primarily targeting the Raspberry Pi 3B+, Raspberry Pi 4, and Raspberry Pi 5.
+RTLS+ Audio is a production-oriented AUDIO-ONLY recording application designed for Raspberry Pi devices, primarily targeting the Raspberry Pi 3B+, Raspberry Pi 4, and Raspberry Pi 5. (Note: No camera integration exists or will be implemented).
 
 ## Project Structure
-- `app/`: Core application source code
+- `app/`: Core application source code (hardware detection, ALSA audio, recording service)
 - `tests/`: Unit tests utilizing mocked interfaces for cross-platform validation
 - `tools/`: Diagnostic and utility scripts
 - `systemd/`: systemd service configuration skeletons
@@ -11,7 +11,7 @@ RTLS+ Audio is a production-oriented audio recording application designed for Ra
 - `scripts/`: Assorted build/run scripts
 - `docs/`: Project architecture and documentation
 
-## Milestone 1 Setup and Testing
+## Milestone 2 Setup and Testing
 This project leverages `pyproject.toml` for standard packaging. To initialize:
 
 ```bash
@@ -32,12 +32,14 @@ To query platform info and available ALSA capture devices:
 ```bash
 # Uses real hardware (requires ALSA)
 rtls-audio status
+rtls-audio audio-devices
 
 # Uses mocked hardware interfaces (useful on development machines)
 rtls-audio --mock status
+rtls-audio --mock audio-devices
 ```
 
-To test capturing audio:
+To test capturing audio through the recording service (which generates timestamped files):
 ```bash
-rtls-audio --mock audio-test --duration 2 --output mock_test.wav
+rtls-audio --mock audio-test --duration 2 --output-dir ./recordings
 ```

@@ -1,13 +1,16 @@
 # RTLS+ Audio Architecture
 
-This document describes the foundational architecture of the RTLS+ Audio application as established in Milestone 1.
+This document describes the foundational architecture of the RTLS+ Audio application as established in Milestone 2.
+
+**Project Scope Constraint**: The application is strictly **AUDIO-ONLY**. There are no camera, V4L2, RTLS video processing, or computer vision subsystems integrated or planned.
 
 ## 1. Application Layers
 The application is structured into loosely coupled modules:
 - **CLI / Entrypoint**: Exposes commands to the user (e.g., `rtls-audio status`, `rtls-audio audio-test`).
 - **Core Abstractions**:
   - `hardware/`: Detects the underlying OS and Raspberry Pi characteristics.
-  - `capture/`: Interfaces with ALSA to list capabilities and pull raw PCM frames.
+  - `capture/`: Interfaces with ALSA to list capabilities and provide abstracted stream reading logic.
+  - `recorder/`: Orchestrates the stream reading and safe chunked encoding into standard WAV format.
 - **Configuration & Utilities**: YAML-based config parsing (`config/`) and structured logging (`utils/`).
 
 ## 2. Hardware Abstraction Boundary
@@ -27,7 +30,11 @@ Where necessary, core functions accept detector instances rather than instantiat
 ## 6. Raspberry Pi 3B+/4/5 Compatibility
 Rather than using global configuration for "is_pi_3", capabilities will later be queried dynamically through profiles based on CPU core count, available RAM, and CPU architecture exposed via `PlatformInfo`.
 
-## 7. Deferred Assumptions (Milestone 1)
+## 7. Recording Architecture & WAV Generation
+The `RecordingService` leverages the `AbstractAudioStream` (`capture/audio_device.py`), consuming audio in safely chunked blocks. This design fundamentally prevents large memory allocations, ensuring stable execution on memory-constrained SBC hardware (e.g. Pi 3B+) across extended recordings. It cleanly tracks failed devices, disrupted streams, and handles zero-byte wave file cleanup.
+
+## 8. Deferred Assumptions (Milestone 2)
+- **Production Device Mapping:** Exact ReSpeaker hardware identifiers, mapping configurations, and required channel widths are not explicitly hard-coded; they remain managed via config mapping until production integration testing provides authoritative settings.
 - **Audio Profile:** We defer selecting the final sample rate, VAD sensitivity, and spatial processing configuration to future milestones.
 - **System Services:** systemd unit creation and hardening are left skeletonized until core processing pipelines are defined.
-- **AI/ML Pipelines:** ML enhancement integrations are entirely out of scope for this milestone.
+- **AI/ML & Cloud:** ML enhancement integrations and external uploads (SMB/FTP) are entirely out of scope for this milestone.

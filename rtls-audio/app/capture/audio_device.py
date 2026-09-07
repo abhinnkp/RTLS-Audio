@@ -14,14 +14,49 @@ class AudioDeviceInfo:
         self.card_index = card_index
         self.capabilities = capabilities
 
+class AbstractAudioStream(abc.ABC):
+    @abc.abstractmethod
+    def read(self) -> Tuple[int, bytes]:
+        """Returns (number_of_frames_read, frame_data_bytes)"""
+        pass
+
+    @abc.abstractmethod
+    def close(self):
+        pass
+
 class AbstractAudioDevice(abc.ABC):
     @abc.abstractmethod
     def list_devices(self) -> List[AudioDeviceInfo]:
         pass
 
     @abc.abstractmethod
+    def open_stream(self, sample_rate: int, channels: int, device: str = "default") -> AbstractAudioStream:
+        pass
+
+    @abc.abstractmethod
     def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2, device: str = "default") -> bool:
         pass
+
+
+class ALSAAudioStream(AbstractAudioStream):
+    def __init__(self, pcm):
+        self.pcm = pcm
+
+    def read(self) -> Tuple[int, bytes]:
+        if not self.pcm:
+            return 0, b""
+        try:
+            return self.pcm.read()
+        except Exception:
+            return 0, b""
+
+    def close(self):
+        if self.pcm:
+            try:
+                self.pcm.close()
+            except Exception:
+                pass
+            self.pcm = None
 
 
 class ALSAAudioDevice(AbstractAudioDevice):
@@ -47,6 +82,21 @@ class ALSAAudioDevice(AbstractAudioDevice):
         except Exception:
             pass
         return devices
+
+    def open_stream(self, sample_rate: int, channels: int, device: str = "default") -> AbstractAudioStream:
+        if not self.alsaaudio:
+            raise RuntimeError("pyalsaaudio is not available")
+
+        inp = self.alsaaudio.PCM(
+            self.alsaaudio.PCM_CAPTURE,
+            self.alsaaudio.PCM_NORMAL,
+            channels=channels,
+            rate=sample_rate,
+            format=self.alsaaudio.PCM_FORMAT_S16_LE,
+            periodsize=160,
+            device=device
+        )
+        return ALSAAudioStream(inp)
 
     def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2, device: str = "default") -> bool:
         if not self.alsaaudio:
@@ -91,12 +141,44 @@ class ALSAAudioDevice(AbstractAudioDevice):
             return False
 
 
+class MockAudioStream(AbstractAudioStream):
+    def __init__(self, sample_rate: int, channels: int, device: str):
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self.device = device
+        self.periodsize = 160
+        self.is_closed = False
+        self.reads = 0
+
+    def read(self) -> Tuple[int, bytes]:
+        if self.is_closed:
+            return 0, b""
+
+        if self.device == "mock_read_error" and self.reads > 5:
+            return 0, b"" # Simulate read failure midway
+
+        if self.device == "mock_zero_frame":
+            return 0, b""
+
+        self.reads += 1
+        data = struct.pack('<h', 0) * self.channels * self.periodsize
+        return self.periodsize, data
+
+    def close(self):
+        self.is_closed = True
+
+
 class MockAudioDevice(AbstractAudioDevice):
     def list_devices(self) -> List[AudioDeviceInfo]:
         return [
             AudioDeviceInfo("Mock Generic Capture Device 0", 0, AudioCapabilities([1, 2], [16000, 48000])),
             AudioDeviceInfo("Mock Generic Capture Device 1", 1, AudioCapabilities([1, 2], [48000]))
         ]
+
+    def open_stream(self, sample_rate: int, channels: int, device: str = "default") -> AbstractAudioStream:
+        if device == "mock_open_error":
+            raise RuntimeError("Mock simulated device open failure")
+        return MockAudioStream(sample_rate, channels, device)
 
     def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2, device: str = "default") -> bool:
         try:

@@ -4,6 +4,7 @@ import os
 
 from app.hardware.platform import PlatformDetector, MockPlatformDetector
 from app.capture.audio_device import ALSAAudioDevice, MockAudioDevice
+from app.recorder.recording_service import RecordingService
 from app.config.config import ConfigLoader
 from app.utils.logger import setup_logger
 
@@ -40,29 +41,54 @@ def cmd_status(args):
                 print(f"  Channels: {d.capabilities.channels}")
                 print(f"  Sample Rates: {d.capabilities.sample_rates}")
 
-def cmd_audio_test(args, config):
+def cmd_audio_devices(args):
     _, audio_device = get_detectors(args.mock)
+    devices = audio_device.list_devices()
+    print("\nAvailable ALSA Capture Devices:")
+    print("-" * 35)
+    if not devices:
+        print("No capture devices found.")
+    else:
+        for d in devices:
+            print(f"Device {d.card_index}: {d.name}")
+            if d.capabilities:
+                print(f"  Channels: {d.capabilities.channels}")
+                print(f"  Sample Rates: {d.capabilities.sample_rates}")
+
+def cmd_audio_test(args, config, logger):
+    _, audio_device = get_detectors(args.mock)
+    recorder = RecordingService(audio_device, logger)
 
     # Use config as defaults if not explicitly provided
     sample_rate = args.rate if args.rate is not None else config.audio.sample_rate
     channels = args.channels if args.channels is not None else config.audio.channels
     device = args.device if args.device is not None else config.audio.device
+    duration = args.duration if args.duration is not None else config.audio.recording_duration
 
-    print(f"Recording a {args.duration}-second test audio to {args.output}...")
+    output_dir = args.output_dir if args.output_dir is not None else config.paths.data_dir
+
+    print(f"Recording a {duration}-second test audio...")
     print(f"Using device: '{device}', Sample rate: {sample_rate}Hz, Channels: {channels}")
 
-    success = audio_device.capture_test_audio(
-        duration_sec=args.duration,
-        filepath=args.output,
+    result = recorder.record(
+        output_dir=output_dir,
+        duration_sec=duration,
         sample_rate=sample_rate,
         channels=channels,
-        device=device
+        sample_width=config.audio.sample_width,
+        device_name=device
     )
 
-    if success:
+    if result.success:
         print("Recording successful.")
+        print(f"Saved to: {result.output_path}")
+        print(f"Captured {result.frames_captured} frames ({result.duration_captured:.2f}s).")
     else:
         print("Recording failed.")
+        if result.error_message:
+            print(f"Error: {result.error_message}")
+        if result.frames_captured > 0:
+            print(f"Partial capture: {result.frames_captured} frames saved to {result.output_path}")
         sys.exit(1)
 
 def main():
@@ -75,10 +101,13 @@ def main():
     # status
     subparsers.add_parser("status", help="Print platform and audio status")
 
+    # audio-devices
+    subparsers.add_parser("audio-devices", help="List available ALSA capture devices")
+
     # audio-test
     audio_parser = subparsers.add_parser("audio-test", help="Capture a short test audio file")
-    audio_parser.add_argument("--duration", type=int, default=3, help="Duration in seconds")
-    audio_parser.add_argument("--output", type=str, default="test_output.wav", help="Output file path")
+    audio_parser.add_argument("--duration", type=int, default=None, help="Duration in seconds (defaults to config)")
+    audio_parser.add_argument("--output-dir", type=str, default=None, help="Output directory path (defaults to config)")
     audio_parser.add_argument("--rate", type=int, default=None, help="Sample rate (defaults to config)")
     audio_parser.add_argument("--channels", type=int, default=None, help="Number of channels (defaults to config)")
     audio_parser.add_argument("--device", type=str, default=None, help="ALSA device name (defaults to config)")
@@ -87,12 +116,14 @@ def main():
 
     # Initialize basic config and logger
     config = ConfigLoader.load(args.config)
-    setup_logger(config.paths.log_dir, console_only=True)
+    logger = setup_logger(config.paths.log_dir, console_only=True)
 
     if args.command == "status":
         cmd_status(args)
+    elif args.command == "audio-devices":
+        cmd_audio_devices(args)
     elif args.command == "audio-test":
-        cmd_audio_test(args, config)
+        cmd_audio_test(args, config, logger)
 
 if __name__ == "__main__":
     main()

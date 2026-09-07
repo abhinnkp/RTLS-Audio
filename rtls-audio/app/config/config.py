@@ -6,12 +6,15 @@ from dataclasses import dataclass, field
 class PathsConfig:
     data_dir: str = "/var/lib/rtls-audio"
     log_dir: str = "/var/log/rtls-audio"
+    config_dir: str = "/etc/rtls-audio"
 
 @dataclass
 class AudioConfig:
     device: str = "default"
     sample_rate: int = 48000
     channels: int = 2
+    sample_width: int = 2
+    recording_duration: int = 3
 
 @dataclass
 class AppConfig:
@@ -36,13 +39,16 @@ class ConfigLoader:
 
             paths_config = PathsConfig(
                 data_dir=paths_data.get('data_dir', "/var/lib/rtls-audio"),
-                log_dir=paths_data.get('log_dir', "/var/log/rtls-audio")
+                log_dir=paths_data.get('log_dir', "/var/log/rtls-audio"),
+                config_dir=paths_data.get('config_dir', "/etc/rtls-audio")
             )
 
             audio_config = AudioConfig(
                 device=audio_data.get('device', "default"),
                 sample_rate=audio_data.get('sample_rate', 48000),
-                channels=audio_data.get('channels', 2)
+                channels=audio_data.get('channels', 2),
+                sample_width=audio_data.get('sample_width', 2),
+                recording_duration=audio_data.get('recording_duration', 3)
             )
 
             config = AppConfig(paths=paths_config, audio=audio_config)
@@ -57,6 +63,8 @@ class ConfigLoader:
             raise ValueError(f"Invalid paths.data_dir: must be a string, got {type(config.paths.data_dir)}")
         if not isinstance(config.paths.log_dir, str):
             raise ValueError(f"Invalid paths.log_dir: must be a string, got {type(config.paths.log_dir)}")
+        if not isinstance(config.paths.config_dir, str):
+            raise ValueError(f"Invalid paths.config_dir: must be a string, got {type(config.paths.config_dir)}")
 
         if not isinstance(config.audio.device, str):
             raise ValueError(f"Invalid audio.device: must be a string, got {type(config.audio.device)}")
@@ -66,3 +74,9 @@ class ConfigLoader:
 
         if not isinstance(config.audio.channels, int) or config.audio.channels <= 0:
             raise ValueError(f"Invalid audio.channels: must be a positive integer, got {config.audio.channels}")
+
+        if not isinstance(config.audio.sample_width, int) or config.audio.sample_width <= 0:
+            raise ValueError(f"Invalid audio.sample_width: must be a positive integer, got {config.audio.sample_width}")
+
+        if not isinstance(config.audio.recording_duration, int) or config.audio.recording_duration <= 0:
+            raise ValueError(f"Invalid audio.recording_duration: must be a positive integer, got {config.audio.recording_duration}")
