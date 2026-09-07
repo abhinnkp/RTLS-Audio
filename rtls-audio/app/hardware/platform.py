@@ -99,12 +99,20 @@ class MockPlatformDetector(PlatformDetector):
         self._cpu_arch = cpu_arch
         self._cores = cores
 
+        self._cpu_model = "Cortex-A53"
+        if "Pi 5" in self._pi_model:
+            self._cpu_model = "Cortex-A76"
+        elif "Pi 4" in self._pi_model:
+            self._cpu_model = "Cortex-A72"
+        elif "Pi 3" in self._pi_model:
+            self._cpu_model = "Cortex-A53"
+
     def detect(self) -> PlatformInfo:
         return PlatformInfo(
-            os_name="Debian GNU/Linux 12 (bookworm)",
+            os_name="Debian GNU/Linux 13 (trixie)",
             kernel_version="6.6.20-v8+",
             cpu_architecture=self._cpu_arch,
-            cpu_model="Cortex-A53",
+            cpu_model=self._cpu_model,
             cpu_cores=self._cores,
             is_raspberry_pi=True,
             pi_model=self._pi_model,
