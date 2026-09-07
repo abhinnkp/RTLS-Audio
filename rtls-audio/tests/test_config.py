@@ -85,5 +85,23 @@ class TestConfig(unittest.TestCase):
         finally:
             os.remove(temp_path)
 
+    def test_valid_ipv4_and_hostname_ntp_server(self):
+        import tempfile
+        import yaml
+
+        test_config = {
+            "time": {"ntp": {"server": "ntp.local.intranet"}}
+        }
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            yaml.dump(test_config, f)
+            temp_path = f.name
+
+        try:
+            config = ConfigLoader.load(temp_path)
+            self.assertEqual(config.time.ntp.server, "ntp.local.intranet")
+        finally:
+            os.remove(temp_path)
+
 if __name__ == '__main__':
     unittest.main()

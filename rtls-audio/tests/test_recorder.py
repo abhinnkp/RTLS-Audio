@@ -74,15 +74,40 @@ class TestRecorder(unittest.TestCase):
             device_name="mock_read_error"
         )
 
-        # mock_read_error stops returning data after 5 reads (6 reads total before failure). 6 * 160 = 960 frames.
+        # mock_read_error triggers IOError after 5 reads (6 reads total before failure). 6 * 160 = 960 frames.
         self.assertFalse(result.success)
-        self.assertIn("zero frames read", result.error_message)
+        self.assertIn("Error during audio capture", result.error_message)
         self.assertEqual(result.frames_captured, 960)
 
         # Assert partial file remains
         self.assertTrue(os.path.exists(result.output_path))
         with wave.open(result.output_path, 'rb') as w:
             self.assertEqual(w.getnframes(), 960)
+
+    def test_filename_collision(self):
+        result1 = self.service.record(
+            output_dir=self.output_dir,
+            duration_sec=0, # Fast fail to just get filename
+            device_name="mock_zero_frame"
+        )
+        result2 = self.service.record(
+            output_dir=self.output_dir,
+            duration_sec=0,
+            device_name="mock_zero_frame"
+        )
+
+        # Even if executed in same second, uuid ensures different paths
+        self.assertNotEqual(result1.output_path, result2.output_path)
+
+    def test_invalid_sample_width_rejection(self):
+        result = self.service.record(
+            output_dir=self.output_dir,
+            duration_sec=1,
+            sample_width=4
+        )
+
+        self.assertFalse(result.success)
+        self.assertIn("Unsupported sample width", result.error_message)
 
 if __name__ == '__main__':
     unittest.main()

@@ -31,10 +31,14 @@ Where necessary, core functions accept detector instances rather than instantiat
 Rather than using global configuration for "is_pi_3", capabilities will later be queried dynamically through profiles based on CPU core count, available RAM, and CPU architecture exposed via `PlatformInfo`.
 
 ## 7. Recording Architecture & WAV Generation
-The `RecordingService` leverages the `AbstractAudioStream` (`capture/audio_device.py`), consuming audio in safely chunked blocks. This design fundamentally prevents large memory allocations, ensuring stable execution on memory-constrained SBC hardware (e.g. Pi 3B+) across extended recordings. It cleanly tracks failed devices, disrupted streams, and handles zero-byte wave file cleanup.
+The `RecordingService` is the canonical and sole path for audio captures. It leverages the `AbstractAudioStream` (`capture/audio_device.py`), consuming audio in safely chunked blocks. This prevents large memory allocations, ensuring stable execution on memory-constrained SBC hardware (e.g. Pi 3B+).
+
+- **Format**: Milestone 2 supports 16-bit PCM only.
+- **Failures & Partials**: The service differentiates between a clean success, a zero-frame failure (which triggers automatic deletion of the empty WAV), and an interrupted partial failure (which safely retains the partial WAV). Genuine IO errors during ALSA `read()` are cleanly propagated and tracked.
+- **Filenames**: Generated deterministically using `YYYYMMDD_HHMMSS_UTC_<UUID>.wav` to prevent any possibility of intra-second collisions.
 
 ## 8. Time Synchronization
-The application requires accurate time for recording timestamps but operates on isolated intranets. It avoids all custom Python NTP implementations and strictly relies on OS-level daemons (e.g., `systemd-timesyncd`). The `SystemdTimeSyncManager` merely parses `timedatectl` output to confirm state. Hard-coded public pools (`pool.ntp.org`) are proactively blocked in configuration validation. All WAV generation logic utilizes timezone-aware `UTC` timestamps mapping strictly to the synchronized OS clock.
+The application requires accurate time for recording timestamps but operates on isolated intranets. It avoids all custom Python NTP implementations. The configuration validates local NTP IP/Hostnames and writes them into `/etc/systemd/timesyncd.conf`, relying directly on OS-level daemon capabilities (`systemd-timesyncd`). Public internet pools (`pool.ntp.org`) are explicitly blocked. All WAV generation utilizes timezone-aware `UTC` timestamps mapping strictly to the synchronized OS clock.
 
 ## 9. Deferred Assumptions (Milestone 2)
 - **Production Device Mapping:** Exact ReSpeaker hardware identifiers, mapping configurations, and required channel widths are not explicitly hard-coded; they remain managed via config mapping until production integration testing provides authoritative settings.

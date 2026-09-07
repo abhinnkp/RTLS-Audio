@@ -107,6 +107,9 @@ def main():
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # apply-config
+    subparsers.add_parser("apply-config", help="Applies OS-level configuration (e.g. systemd-timesyncd NTP). May require root.")
+
     # status
     subparsers.add_parser("status", help="Print platform and audio status")
 
@@ -127,7 +130,11 @@ def main():
     config = ConfigLoader.load(args.config)
     logger = setup_logger(config.paths.log_dir, console_only=True)
 
-    if args.command == "status":
+    if args.command == "apply-config":
+        _, _, time_sync = get_detectors(args.mock, config)
+        time_sync.logger = logger # Enable logging for apply phase
+        time_sync.apply_configuration()
+    elif args.command == "status":
         cmd_status(args, config)
     elif args.command == "audio-devices":
         cmd_audio_devices(args, config)

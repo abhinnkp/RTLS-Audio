@@ -33,11 +33,6 @@ class AbstractAudioDevice(abc.ABC):
     def open_stream(self, sample_rate: int, channels: int, device: str = "default") -> AbstractAudioStream:
         pass
 
-    @abc.abstractmethod
-    def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2, device: str = "default") -> bool:
-        pass
-
-
 class ALSAAudioStream(AbstractAudioStream):
     def __init__(self, pcm):
         self.pcm = pcm
@@ -45,10 +40,9 @@ class ALSAAudioStream(AbstractAudioStream):
     def read(self) -> Tuple[int, bytes]:
         if not self.pcm:
             return 0, b""
-        try:
-            return self.pcm.read()
-        except Exception:
-            return 0, b""
+        # Do not catch exceptions here; let them propagate as genuine read errors
+        # to correctly inform the caller (e.g. RecordingService) of device failure.
+        return self.pcm.read()
 
     def close(self):
         if self.pcm:
@@ -98,48 +92,6 @@ class ALSAAudioDevice(AbstractAudioDevice):
         )
         return ALSAAudioStream(inp)
 
-    def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2, device: str = "default") -> bool:
-        if not self.alsaaudio:
-            return False
-
-        try:
-            inp = self.alsaaudio.PCM(
-                self.alsaaudio.PCM_CAPTURE,
-                self.alsaaudio.PCM_NORMAL,
-                channels=channels,
-                rate=sample_rate,
-                format=self.alsaaudio.PCM_FORMAT_S16_LE,
-                periodsize=160,
-                device=device
-            )
-
-            with wave.open(filepath, 'wb') as w:
-                w.setnchannels(channels)
-                w.setsampwidth(2) # 16 bit
-                w.setframerate(sample_rate)
-
-                frames_to_read = int(sample_rate * duration_sec / 160)
-                frames_read = 0
-                for _ in range(frames_to_read):
-                    length, data = inp.read()
-                    if length > 0:
-                        w.writeframes(data)
-                        frames_read += length
-                    else:
-                        # Capture failed or zero frames read
-                        import logging
-                        logging.getLogger("rtls-audio").error("ALSA capture returned zero frames.")
-                        return False
-
-                if frames_read == 0:
-                    return False
-
-            return True
-        except Exception as e:
-            import logging
-            logging.getLogger("rtls-audio").error(f"ALSA capture failed: {e}")
-            return False
-
 
 class MockAudioStream(AbstractAudioStream):
     def __init__(self, sample_rate: int, channels: int, device: str):
@@ -155,7 +107,7 @@ class MockAudioStream(AbstractAudioStream):
             return 0, b""
 
         if self.device == "mock_read_error" and self.reads > 5:
-            return 0, b"" # Simulate read failure midway
+            raise IOError("Mock simulated underlying device read failure")
 
         if self.device == "mock_zero_frame":
             return 0, b""
@@ -179,24 +131,3 @@ class MockAudioDevice(AbstractAudioDevice):
         if device == "mock_open_error":
             raise RuntimeError("Mock simulated device open failure")
         return MockAudioStream(sample_rate, channels, device)
-
-    def capture_test_audio(self, duration_sec: int, filepath: str, sample_rate: int = 48000, channels: int = 2, device: str = "default") -> bool:
-        try:
-            if duration_sec <= 0 or channels <= 0 or sample_rate <= 0:
-                return False
-
-            with wave.open(filepath, 'wb') as w:
-                w.setnchannels(channels)
-                w.setsampwidth(2)
-                w.setframerate(sample_rate)
-
-                # Generate a simple dummy tone or silence
-                total_frames = sample_rate * duration_sec
-                # Just writing zeros for silence to mock audio
-                data = struct.pack('<h', 0) * channels * total_frames
-                w.writeframes(data)
-            return True
-        except Exception as e:
-            import logging
-            logging.getLogger("rtls-audio").error(f"Mock capture failed: {e}")
-            return False

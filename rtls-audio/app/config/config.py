@@ -94,8 +94,8 @@ class ConfigLoader:
         if not isinstance(config.audio.channels, int) or config.audio.channels <= 0:
             raise ValueError(f"Invalid audio.channels: must be a positive integer, got {config.audio.channels}")
 
-        if not isinstance(config.audio.sample_width, int) or config.audio.sample_width <= 0:
-            raise ValueError(f"Invalid audio.sample_width: must be a positive integer, got {config.audio.sample_width}")
+        if not isinstance(config.audio.sample_width, int) or config.audio.sample_width != 2:
+            raise ValueError(f"Invalid audio.sample_width: only 16-bit PCM (sample_width=2) is currently supported, got {config.audio.sample_width}")
 
         if not isinstance(config.audio.recording_duration, int) or config.audio.recording_duration <= 0:
             raise ValueError(f"Invalid audio.recording_duration: must be a positive integer, got {config.audio.recording_duration}")
@@ -106,7 +106,19 @@ class ConfigLoader:
         if not isinstance(config.time.ntp.server, str) or not config.time.ntp.server.strip():
             raise ValueError(f"Invalid time.ntp.server: must be a non-empty string, got {config.time.ntp.server}")
 
+        import re
+        # Basic regex for IPv4, IPv6, or standard hostname
+        hostname_regex = re.compile(
+            r'^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*'
+            r'([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+        )
+        ipv6_regex = re.compile(r'^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$')
+
+        server = config.time.ntp.server.strip()
+        if not hostname_regex.match(server) and not ipv6_regex.match(server):
+            raise ValueError(f"Invalid time.ntp.server: must be a valid IPv4, IPv6, or hostname, got {server}")
+
         # Ensure it's not silently using a public pool if it accidentally slipped in
         forbidden_pools = ["pool.ntp.org", "time.google.com", "time.windows.com", "time.apple.com"]
-        if any(pool in config.time.ntp.server.lower() for pool in forbidden_pools):
-            raise ValueError(f"Invalid time.ntp.server: Public internet NTP servers are not permitted ({config.time.ntp.server})")
+        if any(pool in server.lower() for pool in forbidden_pools):
+            raise ValueError(f"Invalid time.ntp.server: Public internet NTP servers are not permitted ({server})")

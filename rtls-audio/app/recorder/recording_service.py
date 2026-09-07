@@ -26,11 +26,21 @@ class RecordingService:
         self.logger = logger
 
     def _generate_filename(self) -> str:
+        import uuid
         timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S_UTC")
-        return f"{timestamp}.wav"
+        unique_id = uuid.uuid4().hex[:6]
+        return f"{timestamp}_{unique_id}.wav"
 
     def record(self, output_dir: str, duration_sec: int, sample_rate: int = 48000,
                channels: int = 2, sample_width: int = 2, device_name: str = "default") -> RecordingResult:
+
+        if sample_width != 2:
+            self.logger.error(f"Unsupported sample width {sample_width}. Only 16-bit PCM (sample_width=2) is supported.")
+            return RecordingResult(
+                success=False, output_path=None, duration_requested=duration_sec,
+                duration_captured=0.0, frames_captured=0, sample_rate=sample_rate,
+                channels=channels, sample_width=sample_width, error_message=f"Unsupported sample width: {sample_width}"
+            )
 
         result = RecordingResult(
             success=False,
@@ -103,8 +113,9 @@ class RecordingService:
             if frames_read_total > 0 and not result.error_message:
                 result.success = True
             elif frames_read_total > 0 and frames_read_total < expected_frames:
-                # We got a partial capture but failed midway
-                pass
+                # We got a partial capture but failed midway. Do not mark as complete success.
+                result.success = False
+                result.error_message = result.error_message or "Partial capture only"
             else:
                 result.success = False
 
@@ -112,6 +123,8 @@ class RecordingService:
             result.error_message = f"Error during audio capture/write: {e}"
             self.logger.error(result.error_message)
             result.success = False
+            result.frames_captured = frames_read_total
+            result.duration_captured = frames_read_total / sample_rate
 
         finally:
             if w:
