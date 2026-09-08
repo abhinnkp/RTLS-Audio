@@ -17,6 +17,16 @@ class AudioConfig:
     recording_duration: int = 3
 
 @dataclass
+class StorageConfig:
+    minimum_free_mb: int = 500
+    maximum_usage_percent: int = 95
+
+@dataclass
+class RecordingConfig:
+    segment_duration_sec: int = 600
+    retry_backoff_sec: int = 5
+
+@dataclass
 class NTPConfig:
     enabled: bool = True
     server: str = "10.0.0.1"
@@ -30,6 +40,8 @@ class AppConfig:
     paths: PathsConfig = field(default_factory=PathsConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     time: TimeConfig = field(default_factory=TimeConfig)
+    storage: StorageConfig = field(default_factory=StorageConfig)
+    recording: RecordingConfig = field(default_factory=RecordingConfig)
 
 class ConfigLoader:
     @staticmethod
@@ -48,6 +60,8 @@ class ConfigLoader:
             audio_data = data.get('audio', {})
             time_data = data.get('time', {})
             ntp_data = time_data.get('ntp', {})
+            storage_data = data.get('storage', {})
+            recording_data = data.get('recording', {})
 
             paths_config = PathsConfig(
                 data_dir=paths_data.get('data_dir', "/var/lib/rtls-audio"),
@@ -70,7 +84,17 @@ class ConfigLoader:
                 )
             )
 
-            config = AppConfig(paths=paths_config, audio=audio_config, time=time_config)
+            storage_config = StorageConfig(
+                minimum_free_mb=storage_data.get('minimum_free_mb', 500),
+                maximum_usage_percent=storage_data.get('maximum_usage_percent', 95)
+            )
+
+            recording_config = RecordingConfig(
+                segment_duration_sec=recording_data.get('segment_duration_sec', 600),
+                retry_backoff_sec=recording_data.get('retry_backoff_sec', 5)
+            )
+
+            config = AppConfig(paths=paths_config, audio=audio_config, time=time_config, storage=storage_config, recording=recording_config)
             ConfigLoader.validate(config)
             return config
 
@@ -130,3 +154,15 @@ class ConfigLoader:
         forbidden_pools = ["pool.ntp.org", "time.google.com", "time.windows.com", "time.apple.com"]
         if any(pool in server.lower() for pool in forbidden_pools):
             raise ValueError(f"Invalid time.ntp.server: Public internet NTP servers are not permitted ({server})")
+
+        if not isinstance(config.storage.minimum_free_mb, int) or config.storage.minimum_free_mb < 0:
+            raise ValueError(f"Invalid storage.minimum_free_mb: must be a non-negative integer, got {config.storage.minimum_free_mb}")
+
+        if not isinstance(config.storage.maximum_usage_percent, int) or not (0 <= config.storage.maximum_usage_percent <= 100):
+            raise ValueError(f"Invalid storage.maximum_usage_percent: must be an integer between 0 and 100, got {config.storage.maximum_usage_percent}")
+
+        if not isinstance(config.recording.segment_duration_sec, int) or config.recording.segment_duration_sec <= 0:
+            raise ValueError(f"Invalid recording.segment_duration_sec: must be a positive integer, got {config.recording.segment_duration_sec}")
+
+        if not isinstance(config.recording.retry_backoff_sec, int) or config.recording.retry_backoff_sec < 0:
+            raise ValueError(f"Invalid recording.retry_backoff_sec: must be a non-negative integer, got {config.recording.retry_backoff_sec}")

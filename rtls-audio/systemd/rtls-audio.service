@@ -1,0 +1,27 @@
+[Unit]
+Description=RTLS+ Audio Recording Daemon
+After=network.target sound.target local-fs.target
+# We intentionally do not strictly require systemd-timesyncd-wait.service
+# or online targets so the daemon can start even if NTP is temporarily down on the Intranet.
+
+[Service]
+Type=simple
+User=rtlsaudio
+Group=audio
+# Assumes 'rtlsaudio' user exists and is a member of the 'audio' group.
+# Directories defined in config (e.g. /var/lib/rtls-audio, /var/log/rtls-audio)
+# must be owned or writable by this user.
+
+ExecStart=/usr/local/bin/rtls-audio run
+
+# If the application encounters an unhandled fatal error or exits cleanly unexpectedly,
+# systemd will attempt to restart it.
+Restart=always
+RestartSec=10
+
+# Allow graceful shutdown logic to trigger on SIGTERM
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

@@ -5,7 +5,11 @@ import os
 from app.hardware.platform import PlatformDetector, MockPlatformDetector
 from app.hardware.time_sync import SystemdTimeSyncManager, MockTimeSyncManager
 from app.capture.audio_device import ALSAAudioDevice, MockAudioDevice
+import signal
+
 from app.recorder.recording_service import RecordingService
+from app.storage.monitor import StorageMonitor
+from app.lifecycle.session_manager import SessionManager
 from app.config.config import ConfigLoader
 from app.utils.logger import setup_logger
 
@@ -100,12 +104,34 @@ def cmd_audio_test(args, config, logger):
             print(f"Partial capture: {result.frames_captured} frames saved to {result.output_path}")
         sys.exit(1)
 
+def cmd_run(args, config, logger):
+    _, audio_device, _ = get_detectors(args.mock, config)
+    recorder = RecordingService(audio_device, logger)
+    storage = StorageMonitor(config.storage, logger)
+    manager = SessionManager(config, logger, recorder, storage)
+
+    def sig_handler(signum, frame):
+        logger.info(f"Received signal {signum}. Triggering graceful shutdown.")
+        manager.shutdown()
+
+    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGTERM, sig_handler)
+
+    try:
+        manager.run()
+    except Exception as e:
+        logger.critical(f"Fatal exception in SessionManager runloop: {e}")
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(description="RTLS+ Audio CLI")
     parser.add_argument("--config", type=str, help="Path to config file", default=None)
     parser.add_argument("--mock", action="store_true", help="Use mock hardware for testing", default=os.environ.get("RTLS_MOCK", "0") == "1")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # run (Daemon)
+    subparsers.add_parser("run", help="Start the continuous audio recording daemon.")
 
     # apply-config
     subparsers.add_parser("apply-config", help="Applies OS-level configuration (e.g. systemd-timesyncd NTP). May require root.")
@@ -130,7 +156,9 @@ def main():
     config = ConfigLoader.load(args.config)
     logger = setup_logger(config.paths.log_dir, console_only=True)
 
-    if args.command == "apply-config":
+    if args.command == "run":
+        cmd_run(args, config, logger)
+    elif args.command == "apply-config":
         _, _, time_sync = get_detectors(args.mock, config)
         time_sync.logger = logger # Enable logging for apply phase
         success = time_sync.apply_configuration()

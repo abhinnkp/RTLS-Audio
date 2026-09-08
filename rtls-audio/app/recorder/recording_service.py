@@ -32,7 +32,8 @@ class RecordingService:
         return f"{timestamp}_{unique_id}.wav"
 
     def record(self, output_dir: str, duration_sec: int, sample_rate: int = 48000,
-               channels: int = 2, sample_width: int = 2, device_name: str = "default") -> RecordingResult:
+               channels: int = 2, sample_width: int = 2, device_name: str = "default",
+               stop_event=None) -> RecordingResult:
 
         if sample_width != 2:
             self.logger.error(f"Unsupported sample width {sample_width}. Only 16-bit PCM (sample_width=2) is supported.")
@@ -90,6 +91,10 @@ class RecordingService:
 
             # Simple streaming loop without massive RAM bloat
             while frames_read_total < expected_frames:
+                if stop_event and stop_event.is_set():
+                    self.logger.info("Recording cleanly interrupted by stop event.")
+                    break
+
                 length, data = stream.read()
 
                 if length <= 0:
@@ -113,7 +118,7 @@ class RecordingService:
             if frames_read_total > 0 and not result.error_message:
                 result.success = True
             elif frames_read_total > 0 and frames_read_total < expected_frames:
-                # We got a partial capture but failed midway. Do not mark as complete success.
+                # We got a partial capture but failed midway or were halted.
                 result.success = False
                 result.error_message = result.error_message or "Partial capture only"
             else:
