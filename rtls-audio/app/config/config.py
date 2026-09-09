@@ -22,9 +22,17 @@ class AudioConfig:
     mixer: MixerConfig = field(default_factory=MixerConfig)
 
 @dataclass
+class SMBConfig:
+    enabled: bool = False
+    server: str = "10.0.0.1"
+    share: str = "RTLS"
+
+@dataclass
 class StorageConfig:
     minimum_free_mb: int = 500
     maximum_usage_percent: int = 95
+    recording_path: str = "/mnt/recordings"
+    smb: SMBConfig = field(default_factory=SMBConfig)
 
 @dataclass
 class RecordingConfig:
@@ -68,6 +76,7 @@ class ConfigLoader:
             storage_data = data.get('storage', {})
             recording_data = data.get('recording', {})
             mixer_data = audio_data.get('mixer', {})
+            smb_data = storage_data.get('smb', {})
 
             paths_config = PathsConfig(
                 data_dir=paths_data.get('data_dir', "/var/lib/rtls-audio"),
@@ -95,7 +104,13 @@ class ConfigLoader:
 
             storage_config = StorageConfig(
                 minimum_free_mb=storage_data.get('minimum_free_mb', 500),
-                maximum_usage_percent=storage_data.get('maximum_usage_percent', 95)
+                maximum_usage_percent=storage_data.get('maximum_usage_percent', 95),
+                recording_path=storage_data.get('recording_path', "/mnt/recordings"),
+                smb=SMBConfig(
+                    enabled=smb_data.get('enabled', False),
+                    server=smb_data.get('server', "10.0.0.1"),
+                    share=smb_data.get('share', "RTLS")
+                )
             )
 
             recording_config = RecordingConfig(
@@ -172,6 +187,18 @@ class ConfigLoader:
 
         if not isinstance(config.storage.maximum_usage_percent, int) or not (0 <= config.storage.maximum_usage_percent <= 100):
             raise ValueError(f"Invalid storage.maximum_usage_percent: must be an integer between 0 and 100, got {config.storage.maximum_usage_percent}")
+
+        if not isinstance(config.storage.recording_path, str) or not config.storage.recording_path.strip():
+            raise ValueError(f"Invalid storage.recording_path: must be a non-empty string, got {config.storage.recording_path}")
+
+        if not isinstance(config.storage.smb.enabled, bool):
+            raise ValueError(f"Invalid storage.smb.enabled: must be a boolean, got {type(config.storage.smb.enabled)}")
+
+        if not isinstance(config.storage.smb.server, str) or not config.storage.smb.server.strip():
+            raise ValueError(f"Invalid storage.smb.server: must be a non-empty string, got {config.storage.smb.server}")
+
+        if not isinstance(config.storage.smb.share, str) or not config.storage.smb.share.strip():
+            raise ValueError(f"Invalid storage.smb.share: must be a non-empty string, got {config.storage.smb.share}")
 
         if not isinstance(config.recording.segment_duration_sec, int) or config.recording.segment_duration_sec <= 0:
             raise ValueError(f"Invalid recording.segment_duration_sec: must be a positive integer, got {config.recording.segment_duration_sec}")

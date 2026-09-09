@@ -1,5 +1,5 @@
-import os
 import unittest
+import os
 from app.config.config import ConfigLoader
 
 class TestConfig(unittest.TestCase):
@@ -100,6 +100,34 @@ class TestConfig(unittest.TestCase):
         try:
             config = ConfigLoader.load(temp_path)
             self.assertEqual(config.time.ntp.server, "ntp.local.intranet")
+        finally:
+            os.remove(temp_path)
+
+    def test_smb_config_loading(self):
+        import tempfile
+        import yaml
+
+        test_config = {
+            "storage": {
+                "recording_path": "/mnt/smb_recordings",
+                "smb": {
+                    "enabled": True,
+                    "server": "192.168.1.100",
+                    "share": "MY_RTLS"
+                }
+            }
+        }
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            yaml.dump(test_config, f)
+            temp_path = f.name
+
+        try:
+            config = ConfigLoader.load(temp_path)
+            self.assertEqual(config.storage.recording_path, "/mnt/smb_recordings")
+            self.assertTrue(config.storage.smb.enabled)
+            self.assertEqual(config.storage.smb.server, "192.168.1.100")
+            self.assertEqual(config.storage.smb.share, "MY_RTLS")
         finally:
             os.remove(temp_path)
 

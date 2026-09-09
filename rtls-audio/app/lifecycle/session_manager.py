@@ -32,13 +32,16 @@ class SessionManager:
 
         while not self.stop_event.is_set():
             # 1. Check Storage
-            storage_status = self.storage_monitor.check_storage(self.config.paths.data_dir)
+            storage_status = self.storage_monitor.check_storage(self.config.storage.recording_path)
             if not storage_status.can_record:
                 if self.state != SessionManagerState.STORAGE_BLOCKED:
-                    self.logger.critical(
-                        f"Storage blocked! Free MB: {storage_status.free_mb} (<{self.config.storage.minimum_free_mb}), "
-                        f"Usage %: {storage_status.usage_percent} (>{self.config.storage.maximum_usage_percent}). Halting new recordings."
-                    )
+                    if not storage_status.is_mounted:
+                        self.logger.critical(f"Storage blocked! SMB Mount Unavailable at {self.config.storage.recording_path}")
+                    else:
+                        self.logger.critical(
+                            f"Storage blocked! Free MB: {storage_status.free_mb} (<{self.config.storage.minimum_free_mb}), "
+                            f"Usage %: {storage_status.usage_percent} (>{self.config.storage.maximum_usage_percent}). Halting new recordings."
+                        )
                     self.state = SessionManagerState.STORAGE_BLOCKED
 
                 # Sleep-poll the disk safely avoiding a busy loop
@@ -54,11 +57,11 @@ class SessionManager:
             self.logger.info("Starting new recording segment.")
 
             def storage_check_cb():
-                status = self.storage_monitor.check_storage(self.config.paths.data_dir)
+                status = self.storage_monitor.check_storage(self.config.storage.recording_path)
                 return status.can_record
 
             result = self.recording_service.record(
-                output_dir=self.config.paths.data_dir,
+                output_dir=self.config.storage.recording_path,
                 duration_sec=self.config.recording.segment_duration_sec,
                 sample_rate=self.config.audio.sample_rate,
                 channels=self.config.audio.channels,

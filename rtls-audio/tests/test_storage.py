@@ -61,5 +61,36 @@ class TestStorageMonitor(unittest.TestCase):
         self.assertFalse(status.can_record)
         self.assertEqual(status.usage_percent, 96)
 
+    def test_smb_not_mounted(self):
+        # Even if statvfs looks healthy, if smb is enabled but not mounted it should fail
+        from app.config.config import SMBConfig
+        config = StorageConfig(minimum_free_mb=500, maximum_usage_percent=95, smb=SMBConfig(enabled=True))
+
+        mock_statvfs = lambda path: MockStatVFS(
+            f_bavail=1000 * 1024, f_frsize=1024, f_blocks=10000 * 1024, f_bfree=9000 * 1024
+        )
+
+        monitor = StorageMonitor(config, self.logger, statvfs_func=mock_statvfs, ismount_func=lambda p: False)
+        status = monitor.check_storage("/mnt/recordings")
+
+        self.assertFalse(status.can_record)
+        self.assertFalse(status.is_mounted)
+        self.assertEqual(status.free_mb, 0)
+
+    def test_smb_mounted_healthy(self):
+        from app.config.config import SMBConfig
+        config = StorageConfig(minimum_free_mb=500, maximum_usage_percent=95, smb=SMBConfig(enabled=True))
+
+        mock_statvfs = lambda path: MockStatVFS(
+            f_bavail=1000 * 1024, f_frsize=1024, f_blocks=10000 * 1024, f_bfree=9000 * 1024
+        )
+
+        monitor = StorageMonitor(config, self.logger, statvfs_func=mock_statvfs, ismount_func=lambda p: True)
+        status = monitor.check_storage("/mnt/recordings")
+
+        self.assertTrue(status.can_record)
+        self.assertTrue(status.is_mounted)
+        self.assertEqual(status.free_mb, 1000)
+
 if __name__ == '__main__':
     unittest.main()

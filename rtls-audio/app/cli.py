@@ -47,6 +47,26 @@ def cmd_status(args, config, logger):
     print("-" * 25)
     print(f"Configured PGA Gain: {config.audio.mixer.pga_gain_db}dB")
 
+    # Inject a simple statvfs/ismount check for status display
+    import os
+    print("\nStorage & SMB:")
+    print("-" * 25)
+    print(f"Recording path: {config.storage.recording_path}")
+    print(f"SMB enabled: {'yes' if config.storage.smb.enabled else 'no'}")
+
+    if config.storage.smb.enabled:
+        print(f"Expected SMB server: {config.storage.smb.server}")
+        print(f"Expected share: {config.storage.smb.share}")
+
+    is_mount = os.path.ismount(config.storage.recording_path) if os.path.exists(config.storage.recording_path) else False
+    print(f"Mount status: {'mounted' if is_mount else 'not mounted'}")
+
+    storage_monitor = StorageMonitor(config.storage, logger, ismount_func=lambda p: is_mount)
+    storage_status = storage_monitor.check_storage(config.storage.recording_path)
+    print(f"Available space: {storage_status.free_mb} MB")
+    print(f"Usage: {storage_status.usage_percent} %")
+    print(f"Recording storage: {'OK' if storage_status.can_record else 'BLOCKED'}")
+
     print("\nAudio Devices:")
     print("-" * 25)
 
@@ -84,7 +104,7 @@ def cmd_audio_test(args, config, logger):
     device = args.device if args.device is not None else config.audio.device
     duration = args.duration if args.duration is not None else config.audio.recording_duration
 
-    output_dir = args.output_dir if args.output_dir is not None else config.paths.data_dir
+    output_dir = args.output_dir if args.output_dir is not None else config.storage.recording_path
 
     print(f"Recording a {duration}-second test audio...")
     print(f"Using device: '{device}', Sample rate: {sample_rate}Hz, Channels: {channels}")
