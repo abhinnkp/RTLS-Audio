@@ -9,12 +9,17 @@ class PathsConfig:
     config_dir: str = "/etc/rtls-audio"
 
 @dataclass
+class MixerConfig:
+    pga_gain_db: int = 25
+
+@dataclass
 class AudioConfig:
     device: str = "default"
     sample_rate: int = 48000
     channels: int = 2
     sample_width: int = 2
     recording_duration: int = 3
+    mixer: MixerConfig = field(default_factory=MixerConfig)
 
 @dataclass
 class StorageConfig:
@@ -62,6 +67,7 @@ class ConfigLoader:
             ntp_data = time_data.get('ntp', {})
             storage_data = data.get('storage', {})
             recording_data = data.get('recording', {})
+            mixer_data = audio_data.get('mixer', {})
 
             paths_config = PathsConfig(
                 data_dir=paths_data.get('data_dir', "/var/lib/rtls-audio"),
@@ -74,7 +80,10 @@ class ConfigLoader:
                 sample_rate=audio_data.get('sample_rate', 48000),
                 channels=audio_data.get('channels', 2),
                 sample_width=audio_data.get('sample_width', 2),
-                recording_duration=audio_data.get('recording_duration', 3)
+                recording_duration=audio_data.get('recording_duration', 3),
+                mixer=MixerConfig(
+                    pga_gain_db=mixer_data.get('pga_gain_db', 25)
+                )
             )
 
             time_config = TimeConfig(
@@ -123,6 +132,9 @@ class ConfigLoader:
 
         if not isinstance(config.audio.recording_duration, int) or config.audio.recording_duration <= 0:
             raise ValueError(f"Invalid audio.recording_duration: must be a positive integer, got {config.audio.recording_duration}")
+
+        if not isinstance(config.audio.mixer.pga_gain_db, (int, float)):
+            raise ValueError(f"Invalid audio.mixer.pga_gain_db: must be a numeric value, got {type(config.audio.mixer.pga_gain_db)}")
 
         if not isinstance(config.time.ntp.enabled, bool):
             raise ValueError(f"Invalid time.ntp.enabled: must be a boolean, got {type(config.time.ntp.enabled)}")

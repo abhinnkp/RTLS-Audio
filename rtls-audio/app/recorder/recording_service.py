@@ -4,7 +4,7 @@ import wave
 import logging
 import datetime
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Callable
 
 from app.capture.audio_device import AbstractAudioDevice, AbstractAudioStream
 
@@ -19,6 +19,7 @@ class RecordingResult:
     channels: int
     sample_width: int
     error_message: Optional[str]
+    status: str = "SUCCESS"
 
 class RecordingService:
     def __init__(self, audio_device: AbstractAudioDevice, logger: logging.Logger):
@@ -33,14 +34,16 @@ class RecordingService:
 
     def record(self, output_dir: str, duration_sec: int, sample_rate: int = 48000,
                channels: int = 2, sample_width: int = 2, device_name: str = "default",
-               stop_event=None) -> RecordingResult:
+               stop_event=None, storage_check_callback: Callable[[], bool] = None,
+               storage_check_interval_frames: int = 48000) -> RecordingResult:
 
         if sample_width != 2:
             self.logger.error(f"Unsupported sample width {sample_width}. Only 16-bit PCM (sample_width=2) is supported.")
             return RecordingResult(
                 success=False, output_path=None, duration_requested=duration_sec,
                 duration_captured=0.0, frames_captured=0, sample_rate=sample_rate,
-                channels=channels, sample_width=sample_width, error_message=f"Unsupported sample width: {sample_width}"
+                channels=channels, sample_width=sample_width, error_message=f"Unsupported sample width: {sample_width}",
+                status="OTHER_ERROR"
             )
 
         result = RecordingResult(
@@ -52,7 +55,8 @@ class RecordingService:
             sample_rate=sample_rate,
             channels=channels,
             sample_width=sample_width,
-            error_message=None
+            error_message=None,
+            status="OTHER_ERROR"
         )
 
         try:
@@ -77,6 +81,7 @@ class RecordingService:
             )
         except Exception as e:
             result.error_message = f"Failed to open audio device '{device_name}': {e}"
+            result.status = "ALSA_ERROR"
             self.logger.error(result.error_message)
             return result
 
@@ -88,17 +93,28 @@ class RecordingService:
 
             expected_frames = sample_rate * duration_sec
             frames_read_total = 0
+            last_storage_check_frame = 0
 
             # Simple streaming loop without massive RAM bloat
             while frames_read_total < expected_frames:
                 if stop_event and stop_event.is_set():
                     self.logger.info("Recording cleanly interrupted by stop event.")
+                    result.status = "SHUTDOWN"
                     break
+
+                if storage_check_callback and (frames_read_total - last_storage_check_frame >= storage_check_interval_frames):
+                    if not storage_check_callback():
+                        result.error_message = "Storage exhaustion during recording"
+                        result.status = "STORAGE_ERROR"
+                        self.logger.critical(result.error_message)
+                        break
+                    last_storage_check_frame = frames_read_total
 
                 length, data = stream.read()
 
                 if length <= 0:
                     result.error_message = "Capture failed or zero frames read during stream."
+                    result.status = "ALSA_ERROR"
                     self.logger.error(result.error_message)
                     break
 
@@ -117,15 +133,19 @@ class RecordingService:
 
             if frames_read_total > 0 and not result.error_message:
                 result.success = True
+                result.status = "SUCCESS"
             elif frames_read_total > 0 and frames_read_total < expected_frames:
                 # We got a partial capture but failed midway or were halted.
                 result.success = False
                 result.error_message = result.error_message or "Partial capture only"
+                if result.status == "OTHER_ERROR": # Keep specific error flags if set
+                    result.status = "ALSA_ERROR"
             else:
                 result.success = False
 
         except Exception as e:
             result.error_message = f"Error during audio capture/write: {e}"
+            result.status = "ALSA_ERROR"
             self.logger.error(result.error_message)
             result.success = False
             result.frames_captured = frames_read_total

@@ -28,6 +28,7 @@ class TestRecorder(unittest.TestCase):
         )
 
         self.assertTrue(result.success)
+        self.assertEqual(result.status, "SUCCESS")
         self.assertIsNotNone(result.output_path)
         self.assertTrue(os.path.exists(result.output_path))
         self.assertEqual(result.frames_captured, 16000)
@@ -48,6 +49,7 @@ class TestRecorder(unittest.TestCase):
         )
 
         self.assertFalse(result.success)
+        self.assertEqual(result.status, "ALSA_ERROR")
         self.assertIn("Failed to open audio device", result.error_message)
         self.assertEqual(result.frames_captured, 0)
 
@@ -59,6 +61,7 @@ class TestRecorder(unittest.TestCase):
         )
 
         self.assertFalse(result.success)
+        self.assertEqual(result.status, "ALSA_ERROR")
         self.assertIn("Capture failed or zero frames read", result.error_message)
         self.assertEqual(result.frames_captured, 0)
 
@@ -76,6 +79,7 @@ class TestRecorder(unittest.TestCase):
 
         # mock_read_error triggers IOError after 5 reads (6 reads total before failure). 6 * 160 = 960 frames.
         self.assertFalse(result.success)
+        self.assertEqual(result.status, "ALSA_ERROR")
         self.assertIn("Error during audio capture", result.error_message)
         self.assertEqual(result.frames_captured, 960)
 
@@ -107,7 +111,38 @@ class TestRecorder(unittest.TestCase):
         )
 
         self.assertFalse(result.success)
+        self.assertEqual(result.status, "OTHER_ERROR")
         self.assertIn("Unsupported sample width", result.error_message)
+
+    def test_mid_recording_storage_exhaustion(self):
+        # Simulate a storage callback that fails midway
+        class MockStorageCheck:
+            def __init__(self):
+                self.calls = 0
+            def __call__(self):
+                self.calls += 1
+                return self.calls < 3
+
+        cb = MockStorageCheck()
+
+        result = self.service.record(
+            output_dir=self.output_dir,
+            duration_sec=2,
+            sample_rate=1600,
+            device_name="mock_generic",
+            storage_check_callback=cb,
+            storage_check_interval_frames=320 # Check every 320 frames
+        )
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.status, "STORAGE_ERROR")
+        self.assertEqual(result.error_message, "Storage exhaustion during recording")
+
+        # Ensure partial WAV remains valid and sealed matching captured frames
+        frames = result.frames_captured
+        self.assertTrue(os.path.exists(result.output_path))
+        with wave.open(result.output_path, 'rb') as w:
+            self.assertEqual(w.getnframes(), frames)
 
 if __name__ == '__main__':
     unittest.main()

@@ -53,6 +53,10 @@ class SessionManager:
             self.state = SessionManagerState.RECORDING
             self.logger.info("Starting new recording segment.")
 
+            def storage_check_cb():
+                status = self.storage_monitor.check_storage(self.config.paths.data_dir)
+                return status.can_record
+
             result = self.recording_service.record(
                 output_dir=self.config.paths.data_dir,
                 duration_sec=self.config.recording.segment_duration_sec,
@@ -60,11 +64,14 @@ class SessionManager:
                 channels=self.config.audio.channels,
                 sample_width=self.config.audio.sample_width,
                 device_name=self.config.audio.device,
-                stop_event=self.stop_event
+                stop_event=self.stop_event,
+                storage_check_callback=storage_check_cb,
+                storage_check_interval_frames=self.config.audio.sample_rate * 5 # check every 5 seconds
             )
 
             # 3. Check shutdown before logging failures
-            if self.stop_event.is_set():
+            if self.stop_event.is_set() or result.status == "SHUTDOWN":
+                self.state = SessionManagerState.SHUTTING_DOWN
                 break
 
             # 4. Check result and recover if needed
@@ -72,10 +79,15 @@ class SessionManager:
                 self.logger.info(f"Segment completed cleanly: {result.output_path} ({result.duration_captured:.2f}s)")
                 self.state = SessionManagerState.IDLE
             else:
-                self.logger.error(f"Recording failed. Result: {result.error_message}. Path: {result.output_path}")
-                self.state = SessionManagerState.RETRY_WAIT
-                self.logger.info(f"Entering retry backoff for {self.config.recording.retry_backoff_sec} seconds.")
-                self._safe_sleep(self.config.recording.retry_backoff_sec)
+                self.logger.error(f"Recording failed. Status: {result.status}. Result: {result.error_message}. Path: {result.output_path}")
+
+                # Distinguish between STORAGE error and ALSA error
+                if result.status == "STORAGE_ERROR":
+                    self.state = SessionManagerState.STORAGE_BLOCKED
+                else:
+                    self.state = SessionManagerState.RETRY_WAIT
+                    self.logger.info(f"Entering retry backoff for {self.config.recording.retry_backoff_sec} seconds.")
+                    self._safe_sleep(self.config.recording.retry_backoff_sec)
 
         self.state = SessionManagerState.SHUTTING_DOWN
         self.logger.info("Session manager runloop has gracefully terminated.")

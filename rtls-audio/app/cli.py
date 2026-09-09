@@ -5,7 +5,9 @@ import os
 from app.hardware.platform import PlatformDetector, MockPlatformDetector
 from app.hardware.time_sync import SystemdTimeSyncManager, MockTimeSyncManager
 from app.capture.audio_device import ALSAAudioDevice, MockAudioDevice
+from app.hardware.mixer import ALSAMixer, MockAudioMixer
 import signal
+import sys
 
 from app.recorder.recording_service import RecordingService
 from app.storage.monitor import StorageMonitor
@@ -13,13 +15,13 @@ from app.lifecycle.session_manager import SessionManager
 from app.config.config import ConfigLoader
 from app.utils.logger import setup_logger
 
-def get_detectors(use_mock: bool, config):
+def get_detectors(use_mock: bool, config, logger):
     if use_mock:
-        return MockPlatformDetector(), MockAudioDevice(), MockTimeSyncManager(config)
-    return PlatformDetector(), ALSAAudioDevice(), SystemdTimeSyncManager(config)
+        return MockPlatformDetector(), MockAudioDevice(), MockTimeSyncManager(config), MockAudioMixer(logger)
+    return PlatformDetector(), ALSAAudioDevice(), SystemdTimeSyncManager(config), ALSAMixer(logger, device=config.audio.device)
 
-def cmd_status(args, config):
-    platform_detector, audio_device, time_sync = get_detectors(args.mock, config)
+def cmd_status(args, config, logger):
+    platform_detector, audio_device, time_sync, mixer = get_detectors(args.mock, config, logger)
 
     info = platform_detector.detect()
 
@@ -41,6 +43,10 @@ def cmd_status(args, config):
     print(f"NTP enabled: {'yes' if time_status.ntp_enabled else 'no'}")
     print(f"NTP server: {time_status.configured_server}")
 
+    print("\nMixer & Gain:")
+    print("-" * 25)
+    print(f"Configured PGA Gain: {config.audio.mixer.pga_gain_db}dB")
+
     print("\nAudio Devices:")
     print("-" * 25)
 
@@ -54,8 +60,8 @@ def cmd_status(args, config):
                 print(f"  Channels: {d.capabilities.channels}")
                 print(f"  Sample Rates: {d.capabilities.sample_rates}")
 
-def cmd_audio_devices(args, config):
-    _, audio_device, _ = get_detectors(args.mock, config)
+def cmd_audio_devices(args, config, logger):
+    _, audio_device, _, _ = get_detectors(args.mock, config, logger)
     devices = audio_device.list_devices()
     print("\nAvailable ALSA Capture Devices:")
     print("-" * 35)
@@ -69,7 +75,7 @@ def cmd_audio_devices(args, config):
                 print(f"  Sample Rates: {d.capabilities.sample_rates}")
 
 def cmd_audio_test(args, config, logger):
-    _, audio_device, _ = get_detectors(args.mock, config)
+    _, audio_device, _, _ = get_detectors(args.mock, config, logger)
     recorder = RecordingService(audio_device, logger)
 
     # Use config as defaults if not explicitly provided
@@ -105,7 +111,15 @@ def cmd_audio_test(args, config, logger):
         sys.exit(1)
 
 def cmd_run(args, config, logger):
-    _, audio_device, _ = get_detectors(args.mock, config)
+    _, audio_device, _, mixer = get_detectors(args.mock, config, logger)
+
+    # Apply PGA Hardware Configuration once during init
+    logger.info(f"Applying configured PGA gain of {config.audio.mixer.pga_gain_db}dB")
+    success = mixer.set_pga_gain(config.audio.mixer.pga_gain_db)
+    if not success:
+        logger.error("Failed to configure hardware PGA gain. Startup aborted to prevent invalid captures.")
+        sys.exit(1)
+
     recorder = RecordingService(audio_device, logger)
     storage = StorageMonitor(config.storage, logger)
     manager = SessionManager(config, logger, recorder, storage)
@@ -159,7 +173,7 @@ def main():
     if args.command == "run":
         cmd_run(args, config, logger)
     elif args.command == "apply-config":
-        _, _, time_sync = get_detectors(args.mock, config)
+        _, _, time_sync, _ = get_detectors(args.mock, config, logger)
         time_sync.logger = logger # Enable logging for apply phase
         success = time_sync.apply_configuration()
         if not success:
@@ -167,9 +181,9 @@ def main():
             sys.exit(1)
         print("Configuration applied successfully.")
     elif args.command == "status":
-        cmd_status(args, config)
+        cmd_status(args, config, logger)
     elif args.command == "audio-devices":
-        cmd_audio_devices(args, config)
+        cmd_audio_devices(args, config, logger)
     elif args.command == "audio-test":
         cmd_audio_test(args, config, logger)
 
